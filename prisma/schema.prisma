@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReportingStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  LOCKED
+}
+
+enum FactorStatus {
+  VERIFIED
+  ESTIMATE
+  FALLBACK
+  PENDING_UPDATE
+}
+
+enum EnergyType {
+  ELECTRICITY
+  NATURAL_GAS
+  LNG
+  DIESEL
+  KEROSENE
+  STEAM
+  SOLAR
+  WIND
+  FLEET
+  OTHER
+}
+
+model Organization {
+  id       String    @id @default(cuid())
+  name     String
+  factories Factory[]
+  users     User[]
+}
+
+model User {
+  id             String             @id @default(cuid())
+  email          String             @unique
+  name           String
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id])
+  factoryAccess  FactoryUserAccess[]
+}
+
+model Factory {
+  id             String             @id @default(cuid())
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id])
+  name           String
+  country        String
+  region         String?
+  startYear      Int
+  active         Boolean            @default(true)
+  reports        AnnualReport[]
+  userAccess     FactoryUserAccess[]
+  energyEntries  EnergyEntry[]
+}
+
+model FactoryUserAccess {
+  factoryId String
+  factory   Factory @relation(fields: [factoryId], references: [id])
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@id([factoryId, userId])
+}
+
+model AnnualReport {
+  id              String         @id @default(cuid())
+  factoryId       String
+  factory         Factory        @relation(fields: [factoryId], references: [id])
+  year            Int
+  status          ReportingStatus @default(DRAFT)
+  outputQuantity  Decimal?
+  outputUnit      String?
+  machineHours    Decimal?
+  totalKco2e      Decimal?
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  lockedAt        DateTime?
+  energyEntries   EnergyEntry[]
+  versions        ReportVersion[]
+
+  @@unique([factoryId, year])
+}
+
+model ReportVersion {
+  id          String   @id @default(cuid())
+  reportId    String
+  report      AnnualReport @relation(fields: [reportId], references: [id])
+  version     Int
+  snapshotJson Json
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@unique([reportId, version])
+}
+
+model EmissionFactor {
+  id            String      @id @default(cuid())
+  energyType    EnergyType
+  country       String?
+  region        String?
+  supplier      String?
+  effectiveYear Int
+  value         Decimal
+  unit          String
+  source        String
+  sourceUrl     String?
+  status        FactorStatus
+  validFrom     DateTime
+  validTo       DateTime?
+  formulaVersion String?
+  notes         String?
+  entries       EnergyEntry[]
+}
+
+model EnergyEntry {
+  id              String   @id @default(cuid())
+  reportId        String
+  report          AnnualReport @relation(fields: [reportId], references: [id])
+  factoryId       String
+  factory         Factory  @relation(fields: [factoryId], references: [id])
+  energyType      EnergyType
+  originalQuantity Decimal?
+  originalUnit    String?
+  normalizedQuantity Decimal?
+  normalizedUnit  String?
+  kco2e           Decimal?
+  factorId        String?
+  factor          EmissionFactor? @relation(fields: [factorId], references: [id])
+  formulaVersion  String?
+  status          FactorStatus @default(ESTIMATE)
+  sourceNotes     String?
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  userId     String?
+  objectType String
+  objectId   String
+  eventType  String
+  beforeJson Json?
+  afterJson  Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+}
